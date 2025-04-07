@@ -1,0 +1,74 @@
+﻿name: streamer-bot-cloud
+
+services:
+  redis:
+    image: redis:8.0-M04-alpine3.21
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli ping | grep -q PONG" ]
+      interval: 1s
+      timeout: 1s
+      retries: 50
+  mysql:
+    image: mysql:9.2.0
+    environment:
+      - MYSQL_DATABASE=streamer-bot-cloud
+      - MYSQL_USER=streamer-bot-cloud
+      - MYSQL_PASSWORD=streamer-bot-cloud
+      - MYSQL_ALLOW_EMPTY_PASSWORD=yes
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysql", "-h", "localhost", "-u", "streamer-bot-cloud", "-pstreamer-bot-cloud", "-e", "SELECT 1" ]
+      interval: 1s
+      timeout: 1s
+      retries: 50
+  backend-server:
+    depends_on:
+      redis:
+        condition: service_healthy
+    build:
+      context: ..
+      dockerfile: src/Backend/Dockerfile
+    image: streamer-bot-cloud-backend:server
+    environment:
+      - aspnetcore_environment=Development
+      - logging_outputs=console
+      - hangfire_type=server
+      - hangfire_redis_host=redis
+      - hangfire_redis_port=6379
+      - hangfire_redis_database=0
+      - hangfire_redis_prefix=sso:hangfire
+  backend-worker:
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    build:
+      context: ..
+      dockerfile: src/Backend/Dockerfile
+    image: streamer-bot-cloud-backend:server
+    environment:
+      - aspnetcore_environment=Development
+      - logging_outputs=console
+      - hangfire_type=worker
+      - hangfire_redis_host=redis
+      - hangfire_redis_port=6379
+      - hangfire_redis_database=0
+      - hangfire_redis_prefix=sso:hangfire
+      - database_sql_name=Streamer.Bot-Cloud
+      - database_sql_server=mysql
+      - database_sql_port=3306
+      - database_sql_database=streamer-bot-cloud
+      - database_sql_user=streamer-bot-cloud
+      - database_sql_password=streamer-bot-cloud
+
+volumes:
+  redis:
+  mysql:
